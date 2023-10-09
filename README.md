@@ -1,1 +1,0 @@
-# Roll_Resonance_Analysis
