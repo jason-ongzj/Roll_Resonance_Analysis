@@ -5,20 +5,21 @@ obj = RollResonance("CN_A.txt", "CL_Delta.txt", "CL_P.txt", "CMQ.txt");
 obj.InitInputData("Dynamic_Roll.txt");
 obj.InitializeVars();
 
-eps = 0.00436;      % rad
-gamma = 22.5;       % deg
-static_AoA = 0.05;   % deg
-cg_offset = 0.005;  % m
-Toffset = 0.001;    % m
-mu = 0;             % deg
+eps = 0.00436;      % rad     Thrust misalignment
+gamma = 22.5;       % deg     Initial fin orientation
+static_AoA = 0.05;  % deg     Sum of body misalignments
+cg_offset = 0.001;  % m       CG offset relative to nozzle center
+Toffset = 0.001;    % m       Thrust offset relative to nozzle center
+mu = 0;             % deg     Angle defining the orientation of the thrust misalignment
+lambda = 90;        % deg     Angle defining the orientation of the body misalignments
 
 fin_cant_angle = 0.35;
 
 obj.SetRefQuantities(0.205, 0.03301, fin_cant_angle)
-obj.AssumeQuantities(eps, gamma, Toffset, cg_offset, static_AoA, mu);
+obj.AssumeQuantities(eps, gamma, Toffset, cg_offset, static_AoA, mu, lambda);
 obj.FindNaturalFrequency();
 
-obj.InitializeBC(100, -4.3138E-15, -0.003732135, 0, 2.144275746)
+obj.InitializeBC(100, -4.3138E-15, -0.003732135, 0, 0)
 for i = 101:length(obj.Time)-1
     % Roll equation via Laplace Transform
     obj.CalcDynamicRoll(i, 100); 
@@ -32,8 +33,11 @@ for i = 101:length(obj.Time)-1
     end
     
     % Just to show calculations are running
+    cmo = -obj.CNAInterp(i) * (obj.CoM(i) - obj.CoP(i)) * obj.staticAoA/obj.D;
     if(mod(i,100) ==0)
        fprintf("Iteration %d00, calculating...\n", i/100);
+       fprintf("Cmo = %5.3f\n", cmo); 
+       fprintf("p = %6.4f\n", obj.P(i));
    end
 end
 
@@ -69,6 +73,7 @@ xlim([0 2]);
 
 figure(3);
 ax = gca;
+
 % Calculated sideslip and AoA
 plot(obj.sideslip(101:2100), obj.AoA(101:2100));
 hold on;

@@ -12,7 +12,7 @@ classdef RollResonance < handle
         D, Sref, cant
         
         % Assumed quantities
-        eps, gamma, Toffset, CGoffset, staticAoA, mu
+        eps, gamma, Toffset, CGoffset, staticAoA, mu, lambda
         
         % Interpolated quantities
         CL_Delta, CL_P, CN_A, Mach_CLP_CLDelta, Mach_CNA
@@ -120,13 +120,14 @@ classdef RollResonance < handle
             obj.cant = cant;
         end
         
-        function AssumeQuantities(obj, eps, gamma, Toffset, CGoffset, staticAoA, mu)
+        function AssumeQuantities(obj, eps, gamma, Toffset, CGoffset, staticAoA, mu, lambda)
             obj.eps = eps;
             obj.gamma = gamma;
             obj.Toffset = Toffset;
             obj.CGoffset = CGoffset;
             obj.staticAoA = staticAoA;
             obj.mu = mu;
+            obj.lambda = lambda;
         end
         
         function FindNaturalFrequency(obj)
@@ -326,10 +327,9 @@ classdef RollResonance < handle
             eps = obj.eps;
             q = obj.q(i);
             cd = obj.Cd(i);
-            lambda = deg2rad(90 - obj.staticAoA);
             cna = obj.CNAInterp(i);
-            cmo = cna * (obj.CoM(i) - obj.CoP(i)) * obj.staticAoA/d;
-            C1 = q*Sref*d*(cmo*cos(lambda) - cd*CGoffset*cos(gamma))/I + ...
+            cmo = -cna * (obj.CoM(i) - obj.CoP(i)) * obj.staticAoA/d;
+            C1 = q*Sref*d*(cmo*cos(obj.lambda) - cd*CGoffset*cos(gamma))/I + ...
                 T*(CGoffset + Toffset)*eps*cos(mu)/I;
             return;
         end
@@ -340,16 +340,15 @@ classdef RollResonance < handle
             mu = deg2rad(obj.mu);
             d = obj.D;
             I = obj.Iyy(i);
-            lambda = deg2rad(90 - obj.staticAoA);
             cna = obj.CNAInterp(i);
-            cmo = cna * (obj.CoM(i) - obj.CoP(i)) * obj.staticAoA/d;
+            cmo = -cna * (obj.CoM(i) - obj.CoP(i)) * obj.staticAoA/d;
             CGoffset = obj.CGoffset;
             Toffset = obj.Toffset;
             eps = obj.eps;
             T = obj.T(i);
             q = obj.q(i);
             cd = obj.Cd(i);
-            C2 = q*Sref*d*(cmo*sin(lambda) - cd*CGoffset*sin(gamma))/I + ...
+            C2 = q*Sref*d*(cmo*sin(obj.lambda) - cd*CGoffset*sin(gamma))/I + ...
                 T*(CGoffset + Toffset)*eps*sin(mu)/I;
             return;
         end
@@ -363,12 +362,12 @@ classdef RollResonance < handle
            C2 = obj.CalcC2(i);
            
            A = A1 + A2*1j;
-           B = B1 + B2*1j;
+           B = -(B1 + B2*1j);
            C = C1 + C2*1j;
            
            % Roots
-           a = 0.5*(-A + sqrt(A^2 + 4*B));
-           b = 0.5*(-A - sqrt(A^2 + 4*B));
+           a = -0.5*A + sqrt(A^2/4 - B);
+           b = -0.5*A - sqrt(A^2/4 - B);
            
            obj.rootAReal(i) = real(a);
            obj.rootAImag(i) = imag(a);
@@ -396,13 +395,13 @@ classdef RollResonance < handle
            rootB = obj.rootBReal(i) + obj.rootBImag(i)*1j;
            trimArm = obj.trimArmReal(i) + obj.trimArmImag(i)*1j;
            
-           P = obj.P(i)/360;
+           p = obj.P(i)/360;
            delta_t = obj.Time(i) - obj.Time(i-1);
            
            % Compute K1, K2  and K3 arms
-           K3 = trimArm/exp(1j*P*delta_t);
-           K1 = (xi_rate_prev - rootB*xi_prev - (1j*P - rootB)*K3)/(rootA - rootB);
-           K2 = (xi_rate_prev - rootA*xi_prev - (1j*P - rootA)*K3)/(rootB - rootA);
+           K3 = trimArm;%/exp(1j*p*delta_t);
+           K1 = (xi_rate_prev - rootB*xi_prev - (1j*p - rootB)*K3)/(rootA - rootB);
+           K2 = (xi_rate_prev - rootA*xi_prev - (1j*p - rootA)*K3)/(rootB - rootA);
            
            obj.K1real(i) = real(K1);
            obj.K1imag(i) = imag(K1);
@@ -411,14 +410,18 @@ classdef RollResonance < handle
            obj.K3real(i) = real(K3);
            obj.K3imag(i) = imag(K3);
            
-           xi_current = K1*exp(rootA*delta_t) + K2*exp(rootB*delta_t) + K3*exp(1i*P*delta_t);
+           xi_current = K1*exp(rootA*delta_t) + K2*exp(rootB*delta_t) + K3*exp(1i*p*delta_t);
 
            obj.AoA(i) = imag(xi_current);
            obj.sideslip(i) = real(xi_current);
            
-           % Use midpoint method to calculate sideslip rate and aoa rate
-           obj.AoARate(i) = 2*(obj.AoA(i)-obj.AoA(i-1))/delta_t - obj.AoARate(i-1);
-           obj.sideslipRate(i) = 2*(obj.sideslip(i)-obj.sideslip(i-1))/delta_t - obj.sideslipRate(i-1);
+           % Compute sideslip and AoA rates
+           xi_dot = K1*rootA*exp(rootA*delta_t) + K2*rootB*exp(rootB*delta_t) + K3*1i*p*exp(1i*p*delta_t);
+           obj.AoARate(i) = imag(xi_dot);
+           obj.sideslipRate(i) = real(xi_dot);
+           
+           % Update Pdot
+           obj.Pdot(i) = (obj.P(i)-obj.P(i-1))/delta_t;
         end
     end
 end
